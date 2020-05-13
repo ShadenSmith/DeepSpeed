@@ -7,14 +7,19 @@ jobs:
 
   strategy:
     matrix:
-      PyTorch12:
+      PyTorch12-CUDA100:
         python.version: '3.6'
         cuda.version: '10.0'
         pytorch.version: '1.2'
         runmodeltests: false
-      PyTorch15:
+      PyTorch15-CUDA101:
         python.version: '3.7'
         cuda.version: '10.1'
+        pytorch.version: '1.5'
+        runmodeltests: false
+      PyTorch15-CUDA102:
+        python.version: '3.7'
+        cuda.version: '10.2'
         pytorch.version: '1.5'
         runmodeltests: true
 
