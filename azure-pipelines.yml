@@ -38,7 +38,7 @@ jobs:
       conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
       conda install --yes conda
       conda install --yes gxx_linux-64
-      conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version)
+      if [[ $(cuda.version) != "10.2" ]]; then conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version) ; fi
     displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
   - script: |
