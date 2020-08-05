@@ -44,12 +44,13 @@ jobs:
       python --version
       which nvcc
       nvcc --version
-      python -c "import torch; print('torch:', torch.__version__)"
+      python -c "import torch; print('torch:', torch.__version__, 'cuda available:', torch.cuda.is_available())"
     displayName: 'Show environment'
 
   - script: |
       source activate $(conda_env)
       ./install.sh
+      python basic_install_test.py
     displayName: 'Install DeepSpeed'
 
   - script: |

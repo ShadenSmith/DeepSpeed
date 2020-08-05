@@ -9,7 +9,7 @@ except ImportError as err:
 
 print(f"torch version: {torch.__version__}")
 
-print(f"deepspeed info: {ds.__version__}, {ds.__git_hash__}, {ds.__git_branch__}")
+print(f"deepspeed info: {ds} {ds.__version__}, {ds.__git_hash__}, {ds.__git_branch__}")
 
 try:
     apex_C = importlib.import_module('apex_C')
