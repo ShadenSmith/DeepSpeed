@@ -11,13 +11,13 @@ jobs:
         python.version: '3.6'
         cuda.version: '10.0'
         pytorch.version: '1.2'
-        runmodeltests: false
-      PyTorch15-CUDA101:
-        python.version: '3.7'
-        cuda.version: '10.1'
-        pytorch.version: '1.5'
         runmodeltests: true
-      #PyTorch15-CUDA102:
+      #PyTorch15-CUDA101:
+      #  python.version: '3.7'
+      #  cuda.version: '10.1'
+      #  pytorch.version: '1.5'
+      #  runmodeltests: true
+      ##PyTorch15-CUDA102:
       #  python.version: '3.7'
       #  cuda.version: '10.2'
       #  pytorch.version: '1.5'
@@ -33,18 +33,20 @@ jobs:
   - script: |
       conda create --force --yes -n $(conda_env) python=$(python.version) cudatoolkit=$(cuda.version)
       source activate $(conda_env)
-      conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
       conda install --yes conda
+      conda install --yes pip
       conda install --yes gxx_linux-64
       if [[ $(cuda.version) != "10.2" ]]; then conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version) ; fi
+      conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
     displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
   - script: |
       source activate $(conda_env)
+      which python
       python --version
       which nvcc
       nvcc --version
-      python -c "import torch; print('torch:', torch.__version__, 'cuda available:', torch.cuda.is_available())"
+      python -c "import torch; print('torch:', torch, torch.__version__, 'cuda available:', torch.cuda.is_available())"
     displayName: 'Show environment'
 
   - script: |
