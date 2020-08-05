@@ -24,9 +24,7 @@ jobs:
       #  runmodeltests: true
 
   variables:
-    conda_root: '/home/deepspeed/miniconda3'
     conda_env: 'ds_test_py$(python.version)_cuda$(cuda.version)_pytorch$(pytorch.version)'
-    conda_env_path: '$(conda_root)/envs/$(conda_env)'
 
   steps:
     # Unfortunately nvidia's nvcc_linux-64=<version> seems to install 10.1 regardless?
@@ -34,7 +32,7 @@ jobs:
     # cudatoolkit runtime
   - script: |
       conda create --force --yes -n $(conda_env) python=$(python.version) cudatoolkit=$(cuda.version)
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
       conda install --yes conda
       conda install --yes gxx_linux-64
@@ -42,7 +40,7 @@ jobs:
     displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       python --version
       which nvcc
       nvcc --version
@@ -50,21 +48,17 @@ jobs:
     displayName: 'Show environment'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
-      rm -rf third_party/apex/build/
-      rm -rf third_party/apex/dist/
-      rm -rf build/
-      rm -rf dist/
+      source activate $(conda_env)
       ./install.sh
     displayName: 'Install DeepSpeed'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       pytest --forked --verbose tests/unit/
     displayName: 'Unit tests'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/
       pip install -r DeepSpeedExamples/Megatron-LM/requirements.txt
       cd tests/model/
@@ -87,24 +81,22 @@ jobs:
   pool:
     name: 'DS_testing'
   variables:
-    conda_root: '/home/deepspeed/miniconda3'
     conda_env: 'ds_codetest'
-    conda_env_path: '$(conda_root)/envs/$(conda_env)'
 
   steps:
   - script: |
       conda create --force --yes -n $(conda_env) python=3.7
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
     displayName: 'Create code test environment'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       pip install pre-commit
       pre-commit run --all-files
     displayName: 'Formatting checks'
 
   - script: |
-      source $(conda_root)/bin/activate $(conda_env_path)
+      source activate $(conda_env)
       pip install pylint
       pylint --exit-zero deepspeed/
     displayName: 'Code linter'
