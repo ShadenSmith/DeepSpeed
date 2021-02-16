@@ -7,6 +7,7 @@ Helper functions and classes from multiple sources.
 '''
 
 import os
+import functools
 from math import ceil
 from math import floor
 from bisect import bisect_left, bisect_right
@@ -578,3 +579,55 @@ def call_to_str(base, *args, **kwargs):
         name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
+
+
+def one_or_many(fn):
+    """Decorator to apply a method over a single argument or list/tuple of arguments.
+
+    If the first argument to the decorated method is of type ``list`` or ``tuple``, then
+    the method is applied elementwise. Otherwise, this decorator is a no-op.
+
+    For example:
+
+    .. code-block:: python
+
+        @one_or_many
+        def double(x):
+            return x * 2
+
+        >>> double(2)
+        4
+        >>> double([1, 2])
+        [2, 4]
+        >>> double((1, 2))
+        (2, 4)
+
+    Any additional arguments provided are passed unmodified to the method. For example:
+
+    .. code-block:: python
+
+        @one_or_many
+        def add(x, y):
+            return x + y
+
+        >>> add(1, 1)
+        2
+        >>> add(1, y=1)
+        2
+        >>> add([1, 2], y=1)
+        [2, 3]
+
+    This decorator is useful for the common pattern of supporting either a tensor or
+    iterable of tensors.
+    """
+    @functools.wraps(fn)
+    def wrapper(input, *args, **kwargs):
+        if isinstance(input, (tuple, list)):
+            outputs = [fn(inp, *args, **kwargs) for inp in input]
+            if isinstance(input, tuple):
+                outputs = tuple(outputs)
+            return outputs
+        else:
+            return fn(input, *args, **kwargs)
+
+    return wrapper
