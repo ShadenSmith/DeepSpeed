@@ -1,18 +1,23 @@
-import json
 import torch
 
 from .base import *
 
+from dataclasses import dataclass, field
 
-class ChrisConf(Config):
-    name: str
-    """name is good """
 
-    x: int = 1138
-    """X is good """
+@dataclass
+class Config:
+    def __getitem__(self, name):
+        """Transparently support dict-style accesses."""
+        return getattr(self, name)
 
 
 class BatchConfig(Config):
+    train_batch_size: int = field(default=1)
+    """The effective training batch size. """
+
+
+class BatchConfig_(Config):
     """ Batch size related parameters. """
 
     train_batch_size = ConfigArg()

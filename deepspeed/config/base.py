@@ -1,3 +1,9 @@
+import json
+import dataclasses
+import typing
+from typing import Generator, Iterator, Tuple, Type, Any
+
+
 class ConfigError(Exception):
     """Errors related to DeepSpeed configuration. """
     pass
@@ -40,95 +46,116 @@ class SubConfig(ConfigArg):
 
 
 class MetaConfig(type):
-    """Metaclass (e.g, class factory) for :class:`Config`.
+    """A metaclass that injects `dataclasses.dataclass` behavior into a class.
 
-    This is used to extract the argument class attributes and stash them in
-    `cls._class_args`.
+    We implement as a metaclass here to retain dataclass behavior without a
+    `@dataclass` decorator for each subclass.
     """
     def __new__(cls, name, bases, dct):
-        config_args = dict()
+        return dataclasses.dataclass(super().__new__(cls, name, bases, dct))
 
-        # Extract configs from the class dictionary and move them to _class_args
-        for key, val in dct.items():
-            if isinstance(val, ConfigArg):
-                config_args[key] = val
-        for key in config_args.keys():
-            del dct[key]
-        dct['_class_args'] = config_args
 
-        return super().__new__(cls, name, bases, dct)
+# Config typing for factory methods
+T = typing.TypeVar('T', bound='Config')
 
 
 class Config(metaclass=MetaConfig):
     """Base class for DeepSpeed configurations.
 
-    ``Config`` is a struct with subclassing. They are initialized from dictionaries
-    and thus also keyword arguments:
+    ``Config`` is a dataclass with subclassing. Configurations should be subclassed
+    to group arguments by topic.
 
-    >>> c = Config(verbose=True)
-    >>> c.verbose
-    True
-    >>> c['verbose']
-    True
+    .. code-block:: python
 
-    You can initialize them from dictionaries:
+        class MyConfig(Config):
+            verbose: bool
+            name: str = 'Beluga' # default value
 
-    >>> myconf = {'verbose' : True}
-    >>> c = Config.from_dict(myconf)
-    >>> c.verbose
-    True
 
-    Configurations should be subclassed to group arguments by topic.
+    Configurations are initialized from dictionaries or keyword arguments:
+
+        >>> myconf = {'verbose' : True}
+        >>> c = MyConfig(**myconf)
+        >>> c = MyConfig(verbose=True)
+        >>> c['verbose']
+        True
+        >>> c.name
+        'Beluga'
     """
-    def __init__(self, **kwargs):
-        super().__init__()
+    def __post_init__(self):
+        """Collect all of the class-specified config arg names into a list."""
+        self._arg_names = [f.name for f in dataclasses.fields(self)]
 
-        # The config arguments we are tracking. Maps name -> ConfigArg
-        self._args = dict()
+    def register_arg(self, name: str, value: Any):
+        """Add an argument to an existing config.
 
-        # Initialize config structure and defaults. _class_args is a dict of the args
-        # in the class definition.
-        for key, val in self._class_args.items():
-            self._set_arg(key, val)
+        Args:
+            name (str): The name of the config arg to add.
+            value (Any): The value of the config arg.
 
-        # First grab defaults
-        # Overwrite any non-defaults specified
-        for key, val in kwargs.items():
-            self._set_arg(key, ConfigArg(value=val))
+        Raises:
+            ValueError: if `name` is already a config arg.
+        """
+        if name in self._arg_names:
+            raise ValueError(f'config arg {name} already registered with {type(self)}')
 
-    def _set_arg(self, key, value):
-        # Is this a fresh arg?
-        if isinstance(value, ConfigArg):
-            self._args[key] = value
-        else:
-            # Update the value
-            self._args[key].value = value
+        self._arg_names.append(name)
+        setattr(self, name, value)
 
-    def __setattr__(self, name, value):
-        # We may be at the start of __init__ before these are set
-        args = self.__dict__.get('_args')
+    def items(self) -> Iterator[Tuple[str, Any]]:
+        """Yields tuples of config arguments in the form (`name`, `value`).
 
-        # Updating an argument?
-        if (args is not None) and (name in args):
-            self._set_arg(name, value)
-            return
+        This is equivalent to `dict.items`.
 
-        # base case
-        super().__setattr__(name, value)
+        .. note::
 
-    def __getattr__(self, name):
-        args = self.__dict__.get('_args')
-        if (args is not None) and (name in args):
-            return args[name].value
+            Only arguments specified in the class or added via :meth:`register_arg`
+            will be included in the generator.
 
-        raise AttributeError(
-            f'{self.__class__.__name__} does not have attribute "{name}"')
+        Yields:
+            Tuple[str, Any]: the configuration's arguments.
+        """
+        for name in self._arg_names:
+            value = getattr(self, name)
+            yield name, value
 
-    def __getitem__(self, name):
-        return getattr(self, name)
+    def keys(self) -> Iterator[str]:
+        """Yields the names of config arguments.
+
+        Yields:
+            Iterator[str]: The names of configuration arguments.
+        """
+        for k, _ in self.items():
+            yield k
+
+    def values(self) -> Iterator[Any]:
+        """Yields the values of config arguments.
+
+        Yields:
+            Iterator[Any]: The configured argument values.
+        """
+        for _, v in self.items():
+            yield v
+
+    def as_dict(self) -> dict:
+        """Return a copy of the config represented as a dictionary.
+
+        .. code-block:: python
+
+            class MyConfig(Config):
+                verbose: bool
+                name: str = 'Beluga'
+
+            >>> MyConfig(verbose=True).as_dict()
+            {'verbose': True, 'name': 'Beluga'}
+
+        Returns:
+            dict: the config dictionary
+        """
+        return dataclasses.asdict(self)
 
     def resolve(self):
-        """Infer any missing arguments, if possible.
+        """Infer any missing arguments, if applicable.
 
         This is useful for configs such as :class:`BatchConfig` in only a
         subset of arguments are required to complete a valid config.
@@ -140,16 +167,41 @@ class Config(metaclass=MetaConfig):
                 arg.resolve()
 
     @classmethod
-    def from_json(cls, json_path):
-        with open(json_path, 'r') as fin:
-            config_dict = json.load(fin)
-        return cls(**config_dict)
+    def from_dict(cls: Type[T], config: dict) -> T:
+        """Construct a config from a dictionary.
+
+        Equivalent to:
+
+        .. code-block:: python
+
+            config = {'verbose' : True, 'name' : 'Beluga'}
+            c = MyConfig(**config)
+
+        Args:
+            cls (`Config`): The config class to construct.
+            config (dict): A path to the JSON file to parse.
+
+        Returns:
+            The constructed config.
+        """
+        return cls(**config)
 
     @classmethod
-    def from_dict(cls, config_dict):
-        return cls(**config_dict)
+    def from_json(cls: Type[T], json_path: str) -> T:
+        """Parse a JSON file and return a configuration.
 
-    def is_valid(self):
+        Args:
+            cls (`Config`): The config class to construct.
+            json_path (str): A path to the JSON file to parse.
+
+        Returns:
+            The constructed config.
+        """
+        with open(json_path, 'r') as fin:
+            config_dict = json.load(fin)
+        return cls.from_dict(**config_dict)
+
+    def is_valid(self) -> bool:
         """Resolve any missing configurations and determine in the configuration is valid.
 
         Returns:
@@ -158,16 +210,16 @@ class Config(metaclass=MetaConfig):
         self.resolve()
         return all(arg.is_valid() for arg in self._args.values())
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.dot_str()
 
-    def dot_str(self, depth=0, dots_width=50):
+    def dot_str(self, depth: int = 0, dots_width: int = 50) -> str:
         indent_width = 4
         indent = ' ' * indent_width
         lines = []
         lines.append(f'{indent * depth}{self.__class__.__name__} = {{')
 
-        for key, val in self._args.items():
+        for key, val in self.items():
             # Recursive configurations
             if isinstance(val, SubConfig):
                 config = val.value
@@ -175,6 +227,10 @@ class Config(metaclass=MetaConfig):
                 continue
 
             dots = '.' * (dots_width - len(key) - (depth * indent_width))
-            lines.append(f'{indent * (depth+1)}{key} {dots} {val}')
+            lines.append(f'{indent * (depth+1)}{key} {dots} {repr(val)}')
         lines.append(f'{indent * depth}}}')
         return '\n'.join(lines)
+
+    def __getitem__(self, name: str) -> Any:
+        """Transparently support dict-style accesses."""
+        return getattr(self, name)

@@ -5,9 +5,14 @@ DeepSpeed Configuration
 Configurations
 ==============
 
+.. autoclass:: deepspeed.config.Config
+   :members:
 
 Training Setup
 --------------
+
+.. autoclass:: deepspeed.config.ChrisConf
+   :members:
 
 .. autoclass:: deepspeed.config.TrainingConfig
    :members:
@@ -27,7 +32,7 @@ Training Optimizations
 
 
 Extending Configurations
-========================
+=======================
 
-.. autoclass:: deepspeed.config.Config
+.. autoclass:: deepspeed.config.BaseConfig
    :members:
