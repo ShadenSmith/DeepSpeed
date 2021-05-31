@@ -1,48 +1,13 @@
 import json
+import hjson
 import dataclasses
 import typing
-from typing import Generator, Iterator, Tuple, Type, Any
+from typing import Iterator, Union, Tuple, Type, Any
 
 
 class ConfigError(Exception):
     """Errors related to DeepSpeed configuration. """
     pass
-
-
-class ConfigArg:
-    def __init__(self, default=None, value=None):
-        self.default = default
-        if value is not None:
-            self.value = value
-        else:
-            self.value = default
-
-    def is_valid(self):
-        return True
-
-    def __repr__(self):
-        return str(self.value)
-
-
-class RequiredArg(ConfigArg):
-    def __init__(self):
-        super().__init__(default=None)
-
-    def is_valid(self):
-        # Ensure the required argument is provided.
-        if self.value is None:
-            return False
-        return super().is_valid()
-
-
-class SubConfig(ConfigArg):
-    def __init__(self, config):
-        if not isinstance(config, Config):
-            raise TypeError(f'Expecting type Config, got {type(config)}')
-        super().__init__(value=config)
-
-    def is_valid(self):
-        return self.value.is_valid()
 
 
 class MetaConfig(type):
@@ -85,6 +50,21 @@ class Config(metaclass=MetaConfig):
     def __post_init__(self):
         """Collect all of the class-specified config arg names into a list."""
         self._arg_names = [f.name for f in dataclasses.fields(self)]
+
+        for name, arg in self.items():
+            if isinstance(arg, AliasSpec):
+                setattr(self.__class__, name, arg.build(root_config=self))
+        '''
+        # Build alias arguments
+        aliases = filter(is_alias, self.items())
+        print()
+        from types import MethodType
+        for alias_name, alias in aliases:
+            #prop = property(lambda obj: getattr(obj, alias.argname))
+            #prop = MethodType(lambda self: self[alias.argname], self)
+            #setattr(self, alias_name, prop)
+            pass
+        '''
 
     def register_arg(self, name: str, value: Any):
         """Add an argument to an existing config.
@@ -155,16 +135,33 @@ class Config(metaclass=MetaConfig):
         return dataclasses.asdict(self)
 
     def resolve(self):
-        """Infer any missing arguments, if applicable.
+        """Infer any missing arguments in this config and subconfigs, if applicable.
 
         This is useful for configs such as :class:`BatchConfig` in only a
         subset of arguments are required to complete a valid config.
+
+        .. note::
+
+            This method is called automatically by :meth:`deepspeed.initialize`, but can
+            be optionally used before.
         """
 
+        self._resolve()
+
         # Walk the tree of subconfigs and also resolve().
-        for arg in self._args:
-            if isinstance(arg, SubConfig):
+        for key, arg in self.items():
+            if isinstance(arg, Config):
                 arg.resolve()
+
+    def _resolve(self):
+        """Implementation to infer any missing arguments for an individual config.
+
+        .. note::
+
+            Subclasses of :class:`Config` should implement this method to handle arguments
+            whose values can be inferred at :meth:`resolve` time.
+        """
+        pass
 
     @classmethod
     def from_dict(cls: Type[T], config: dict) -> T:
@@ -187,18 +184,33 @@ class Config(metaclass=MetaConfig):
         return cls(**config)
 
     @classmethod
-    def from_json(cls: Type[T], json_path: str) -> T:
+    def from_json(cls: Type[T], path: str) -> T:
         """Parse a JSON file and return a configuration.
 
         Args:
             cls (`Config`): The config class to construct.
-            json_path (str): A path to the JSON file to parse.
+            path (str): A path to the JSON file to parse.
 
         Returns:
             The constructed config.
         """
-        with open(json_path, 'r') as fin:
+        with open(path, 'r') as fin:
             config_dict = json.load(fin)
+        return cls.from_dict(**config_dict)
+
+    @classmethod
+    def from_hjson(cls: Type[T], path: str) -> T:
+        """Parse an Hjson file and return a configuration.
+
+        Args:
+            cls (`Config`): The config class to construct.
+            path (str): A path to the JSON file to parse.
+
+        Returns:
+            The constructed config.
+        """
+        with open(path, 'r') as fin:
+            config_dict = hjson.load(fin)
         return cls.from_dict(**config_dict)
 
     def is_valid(self) -> bool:
@@ -208,7 +220,7 @@ class Config(metaclass=MetaConfig):
             bool: Whether the config and all sub-configs are valid.
         """
         self.resolve()
-        return all(arg.is_valid() for arg in self._args.values())
+        return all(arg.is_valid() for arg in self.values())
 
     def __str__(self) -> str:
         return self.dot_str()
@@ -221,7 +233,7 @@ class Config(metaclass=MetaConfig):
 
         for key, val in self.items():
             # Recursive configurations
-            if isinstance(val, SubConfig):
+            if isinstance(val, Config):
                 config = val.value
                 lines.append(config.dot_str(depth=depth + 1))
                 continue
@@ -234,3 +246,58 @@ class Config(metaclass=MetaConfig):
     def __getitem__(self, name: str) -> Any:
         """Transparently support dict-style accesses."""
         return getattr(self, name)
+
+
+class ArgAlias:
+    def __init__(self, name, deprecated: bool = True):
+        self.name = name
+
+    def __get__(self, inst, cls):
+        if inst is None:
+            # class attribute
+            return self
+        return getattr(inst, self.name)
+
+    def __set__(self, inst, value):
+        setattr(inst, self.name, value)
+
+    def __delete__(self, inst):
+        delattr(inst, self.name)
+
+    def __repr__(self) -> str:
+        return f"(alias to {self.name})'"
+
+
+class AliasSpec:
+    def __init__(self, alias_to: str, deprecated: bool):
+        self.alias_to = alias_to
+        self.deprecated = deprecated
+
+    def build(self, root_config: Config) -> ArgAlias:
+        if not hasattr(root_config, self.alias_to):
+            raise RuntimeError(f'Config {type(root_config)} has no attribute '
+                               f'{self.alias_to} to alias.')
+        return ArgAlias(self.alias_to, deprecated=self.deprecated)
+
+    def __repr__(self) -> str:
+        return f'Alias({self.alias_to})'
+
+
+def alias(name: str, deprecated: bool = True) -> ArgAlias:
+    return AliasSpec(name, deprecated=deprecated)
+    #return Alias(name)
+
+
+def is_alias(arg: Union[Tuple[str, Any], Any]) -> bool:
+    """Determine if a config argument is an alias of another.
+
+    Args:
+        arg (Union[Any,Tuple[str,Any]]): the argument or ('name', argument)
+
+    Returns:
+        bool: if `arg` is an alias of another argument.
+    """
+    # arg is ('name', value)
+    if isinstance(arg, tuple):
+        return is_alias(arg[1])
+    return isinstance(arg, ArgAlias)

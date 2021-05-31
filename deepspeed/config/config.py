@@ -1,21 +1,21 @@
-import json
 import torch
 
 from .base import *
 
 
-class ChrisConf(Config):
-    name: str
-    """name is good """
-
-    x: int = 1138
-    """X is good """
-
-
 class BatchConfig(Config):
-    """ Batch size related parameters. """
+    r"""Configure parameters related to batch sizes.
 
-    train_batch_size = ConfigArg()
+    .. math::
+
+        \begin{eqnarray}
+            \text{train_batch_size} & = & \text{micro_batch_size} \\
+                                    & & \times \text{gradient_accumulation_steps} \times \text{data parallelism}
+        \end{eqnarray}
+
+    """
+
+    train_batch_size: int = None
     """ The effective training batch size.
 
     This is the number of data samples that leads to one step of model
@@ -25,7 +25,7 @@ class BatchConfig(Config):
     :attr:`gradient_accumulation_steps`), and the number of GPUs.
     """
 
-    train_micro_batch_size_per_gpu = ConfigArg()
+    micro_batch_size: int = None
     """The batch size to be processed per device each forward/backward step.
 
     When specified, ``gradient_accumulation_steps`` is automatically
@@ -33,7 +33,7 @@ class BatchConfig(Config):
     not be concurrently specified with ``gradient_accumulation_steps``.
     """
 
-    gradient_accumulation_steps = ConfigArg(default=1)
+    gradient_accumulation_steps: int = None
     """ The number of training steps to accumulate gradients before averaging
     and applying them.
 
@@ -42,9 +42,18 @@ class BatchConfig(Config):
     steps. Another impact of this feature is the ability to train with larger
     batch sizes per GPU. When specified, ``train_step_batch_size`` is
     automatically calculated using ``train_batch_size`` and number of GPUs.
-    Should not be concurrently specified with ``train_step_batch_size``.
+    Should not be concurrently specified with ``train_batch_size``.
     """
-    def resolve(self):
+
+    train_micro_batch_size_per_gpu: int = alias('micro_batch_size')
+    """Alias of :attr:`micro_batch_size`.
+
+    .. note::
+
+        Configuration ``train_micro_batch_size_per_gpu`` is deprecated and will
+        be removed in future releases. See :attr:`micro_batch_size` instead.
+    """
+    def _resolve(self):
         """Complete batch configuration so long as two are provided. """
         batch = self.train_batch_size
         mb = self.train_micro_batch_size_per_gpu
@@ -122,17 +131,18 @@ class FP16Config(Config):
     """ FP16 configuration. """
 
     #: Enable/disable FP16
-    enabled = ConfigArg(default=False)
+    enabled: bool = False
 
     #: Gradient clipping
-    clip = ConfigArg(default=1.0)
+    clip: float = 1.0
 
 
 class TrainingConfig(Config):
     """Top-level configuration for all aspects of training with DeepSpeed."""
 
     #: Batch configuration, see :class:`BatchConfig`
-    batch = SubConfig(BatchConfig())
+    #batch: BatchConfig = None
+    batch = None
 
     #: FP16 training, see :class:`FP16Config`
-    fp16 = SubConfig(FP16Config())
+    fp16 = None

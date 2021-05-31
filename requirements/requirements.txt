@@ -5,3 +5,4 @@ tensorboardX==1.8
 ninja
 numpy
 dataclasses; python_version < '3.7'
+hjson

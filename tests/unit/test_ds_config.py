@@ -67,7 +67,7 @@ def test_config_register():
     assert 'level' in c.keys()
 
 
-@pytest.mark.skip()
+@pytest.mark.skip('Not impemented yet')
 def test_batch_config():
     config_dict = {
         'train_batch_size': 4,
@@ -75,8 +75,39 @@ def test_batch_config():
     }
 
     c = config.BatchConfig(**config_dict)
+    print()
+    print(c)
     assert c['train_batch_size'] == 2
     assert c.gradient_accumulation_steps == 2
+
+
+class AliasedConfig(config.Config):
+    age: int = 1
+    age2: int = config.alias('age', deprecated=True)
+    name: str = 'tygra'
+
+
+def test_alias():
+    c = AliasedConfig(age=1)
+
+    assert c.age == c.age2
+
+    c.age = 11
+    assert c.age == c.age2
+
+    c.age2 = 1138
+    assert c.age == c.age2
+
+    c2 = AliasedConfig.from_dict(c.as_dict())
+    c2.age2 = 111111
+    assert c2.age == c2.age2
+
+    # legacy dicts?
+    legacy = {'age2': 3, 'name': 'Panthro'}
+    c = AliasedConfig.from_dict(legacy)
+    assert c.age == 3
+    assert c.age2 == 3
+    assert c.name == 'Panthro'
 
 
 def test_config_str():
