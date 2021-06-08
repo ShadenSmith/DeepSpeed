@@ -56,7 +56,7 @@ class BatchConfig(Config):
     def _resolve(self):
         """Complete batch configuration so long as two are provided. """
         batch = self.train_batch_size
-        mb = self.train_micro_batch_size_per_gpu
+        mb = self.micro_batch_size
         gas = self.gradient_accumulation_steps
 
         if torch.distributed.is_initialized():
@@ -76,12 +76,12 @@ class BatchConfig(Config):
             gas //= world_size
             self.gradient_accumulation_steps = gas
 
-        #micro_batch_per_gpu needs to be set
+        #micro_batch_size needs to be set
         elif batch is not None and \
             gas is not None:
             mb = batch // world_size
             mb //= gas
-            self.train_micro_batch_size_per_gpu = mb
+            self.micro_batch_size = mb
 
         #train_batch_size needs to be set
         elif mb is not None and \
@@ -93,26 +93,25 @@ class BatchConfig(Config):
         #gradient_accumulation_steps and micro_batch_per_gpus is set
         elif batch is not None:
             self.gradient_accumulation_steps = 1
-            self.train_micro_batch_size_per_gpu = batch // world_size
+            self.micro_batch_size = batch // world_size
 
         #train_batch_size and gradient_accumulation_step is set
         elif mb is not None:
             self.train_batch_size = mb * world_size
             self.gradient_accumulation_steps = 1
 
-    def is_valid(self):
+    def _is_valid(self):
         self.resolve()
 
         batch = self.train_batch_size
-        mb = self.train_micro_batch_size_per_gpu
+        mb = self.micro_batch_size
         gas = self.gradient_accumulation_steps
 
         if batch is None or batch <= 0:
             raise ConfigError(f'train_batch_size: {batch} must be greater than 0.')
 
         if mb is None or mb <= 0:
-            raise ConfigError(
-                f'train_micro_batch_size_per_gpu: {mb} must be greater than 0.')
+            raise ConfigError(f'micro_batch_size: {mb} must be greater than 0.')
 
         if gas is None or gas <= 0:
             raise ConfigError(
@@ -121,7 +120,7 @@ class BatchConfig(Config):
         if batch != (mb * gas * self.world_size):
             raise ConfigError(
                 f'Check batch related parameters. train_batch_size is not equal'
-                f' to micro_batch_per_gpu * gradient_acc_step * world_size'
+                f' to micro_batch_size * gradient_acc_step * world_size'
                 f'{batch} != {mb} * {gas} * {self.world_size}')
 
         return True

@@ -1,3 +1,4 @@
+from deepspeed.config.config import TrainingConfig
 import pytest
 import os
 import json
@@ -111,6 +112,6 @@ def test_alias():
 
 
 def test_config_str():
-    c = MyConfig(verbose=False)
+    c = TrainingConfig()
     print()
     print(c)

@@ -54,17 +54,6 @@ class Config(metaclass=MetaConfig):
         for name, arg in self.items():
             if isinstance(arg, AliasSpec):
                 setattr(self.__class__, name, arg.build(root_config=self))
-        '''
-        # Build alias arguments
-        aliases = filter(is_alias, self.items())
-        print()
-        from types import MethodType
-        for alias_name, alias in aliases:
-            #prop = property(lambda obj: getattr(obj, alias.argname))
-            #prop = MethodType(lambda self: self[alias.argname], self)
-            #setattr(self, alias_name, prop)
-            pass
-        '''
 
     def register_arg(self, name: str, value: Any):
         """Add an argument to an existing config.
@@ -214,13 +203,23 @@ class Config(metaclass=MetaConfig):
         return cls.from_dict(**config_dict)
 
     def is_valid(self) -> bool:
-        """Resolve any missing configurations and determine in the configuration is valid.
+        """Resolve any missing configurations and determine if the configuration is valid.
 
         Returns:
             bool: Whether the config and all sub-configs are valid.
         """
         self.resolve()
-        return all(arg.is_valid() for arg in self.values())
+
+        if not self._is_valid():
+            return False
+
+        # Walk the tree of subconfigs and also resolve().
+        for key, arg in self.items():
+            if isinstance(arg, Config):
+                if not arg.is_valid():
+                    return False
+
+        return True
 
     def __str__(self) -> str:
         return self.dot_str()
